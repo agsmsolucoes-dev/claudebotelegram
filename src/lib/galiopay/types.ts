@@ -1,6 +1,6 @@
-// Tipos baseados no repo público GalioPay/galiopay-integration-example (2026-06).
-// Status real e shapes completos ainda não validados com conta própria —
-// ver "O que falta validar com conta real" em ../../../CLAUDE.md (raiz do agente DARWIN).
+// Tipos validados com conta real GalioPay em 2026-06 (ver scripts/test-galiopay.mjs).
+// Pendente ainda: shape de `payments.status` após um pagamento real ser aprovado
+// (ver "O que falta validar com conta real" em ../../../CLAUDE.md).
 
 export interface PaymentLinkItem {
   title: string;
@@ -22,11 +22,13 @@ export interface CreatePaymentLinkInput {
 }
 
 export interface CreatePaymentLinkOutput {
+  // A API NÃO retorna `id` diretamente — é extraído do path da `url`
+  // (ex: https://pay.galio.app/payment/{id}?proof=...) por createPaymentLink().
   id: string;
   url: string;
-  // TODO: confirmar se o create retorna proofToken diretamente (necessário pra
-  // resolver o paymentId via GET /payment-links/{id}?proof= no polling do cron).
-  proofToken?: string;
+  proofToken: string;
+  referenceId: string;
+  sandbox: boolean;
 }
 
 export interface UpdatePaymentLinkInput {
@@ -42,7 +44,11 @@ export interface PaymentLinkProof {
   proofToken: string;
   items: PaymentLinkItem[];
   referenceId: string;
-  status: string;
+  status: GalioPayPaymentStatus;
+  sandbox: boolean;
+  backUrl?: CreatePaymentLinkInput["backUrl"];
+  // TODO: confirmar nome/formato deste campo quando um pagamento real for aprovado
+  // (não aparece enquanto status === "pending").
   paymentId?: string;
 }
 

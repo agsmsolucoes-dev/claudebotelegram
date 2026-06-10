@@ -50,11 +50,21 @@ async function request<T>(
 }
 
 /** Cria um link de pagamento (CVU). `referenceId` deve ser o id interno do nosso `payments`. */
-export function createPaymentLink(input: CreatePaymentLinkInput) {
-  return request<CreatePaymentLinkOutput>("/payment-links", {
+export async function createPaymentLink(
+  input: CreatePaymentLinkInput
+): Promise<CreatePaymentLinkOutput> {
+  const raw = await request<Omit<CreatePaymentLinkOutput, "id">>("/payment-links", {
     method: "POST",
     body: JSON.stringify(input),
   });
+
+  // A API não retorna `id` no create — extrai do path da `url`.
+  const id = raw.url.match(/\/payment\/([a-f0-9]+)/)?.[1];
+  if (!id) {
+    throw new Error(`GalioPay createPaymentLink: não foi possível extrair id de ${raw.url}`);
+  }
+
+  return { ...raw, id };
 }
 
 export function updatePaymentLink(id: string, input: UpdatePaymentLinkInput) {
