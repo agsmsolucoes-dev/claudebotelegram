@@ -20,6 +20,7 @@ export interface Database {
           commission_fixed: number;
           payout_account: Record<string, unknown> | null;
           auto_withdraw: boolean;
+          dashboard_token: string;
           created_at: string;
         };
         Insert: Partial<Database["public"]["Tables"]["creators"]["Row"]> & {

@@ -1,7 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getMe, setWebhook } from "@/lib/telegram/client";
+import { registerBot } from "@/lib/engine/register-bot";
 
 /**
  * Chamado pela dashboard quando a criadora cola o token gerado pelo @BotFather.
@@ -20,33 +18,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let me;
+  let bot;
   try {
-    me = await getMe(botToken);
+    bot = await registerBot(creatorId, botToken);
   } catch {
     return NextResponse.json({ error: "Token de bot inválido" }, { status: 400 });
   }
-
-  const supabase = createAdminClient();
-  const webhookSecret = randomUUID();
-
-  const { data: bot, error } = await supabase
-    .from("bots")
-    .insert({
-      creator_id: creatorId,
-      bot_token: botToken,
-      bot_username: me.username,
-      webhook_secret: webhookSecret,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  const webhookUrl = `${process.env.APP_URL}/api/telegram/${bot.id}`;
-  await setWebhook(botToken, webhookUrl, bot.webhook_secret);
 
   return NextResponse.json({ id: bot.id, username: bot.bot_username });
 }
