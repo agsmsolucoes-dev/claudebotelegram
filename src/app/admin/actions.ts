@@ -84,6 +84,26 @@ export async function createOffer(formData: FormData) {
   revalidatePath(`/admin/creators/${creatorId}`);
 }
 
+export async function registerWithdrawal(formData: FormData) {
+  const supabase = createAdminClient();
+
+  const creatorId = str(formData, "creator_id");
+  const amount = str(formData, "amount");
+  const currency = str(formData, "currency");
+
+  const { error } = await supabase.from("withdrawals").insert({
+    creator_id: creatorId,
+    amount: Number(amount),
+    currency: currency || undefined,
+    status: "completed",
+    processed_at: new Date().toISOString(),
+  });
+
+  if (error) throw error;
+
+  revalidatePath(`/admin/creators/${creatorId}`);
+}
+
 export async function toggleOfferActive(formData: FormData) {
   const supabase = createAdminClient();
 

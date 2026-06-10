@@ -1,6 +1,12 @@
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createGroup, createOffer, registerBotAction, toggleOfferActive } from "../../actions";
+import {
+  createGroup,
+  createOffer,
+  registerBotAction,
+  registerWithdrawal,
+  toggleOfferActive,
+} from "../../actions";
 import { DashboardLink } from "./dashboard-link";
 
 const PERIODS = ["weekly", "monthly", "quarterly", "yearly"] as const;
@@ -46,6 +52,21 @@ export default async function CreatorPage({
     offersByGroup.set(offer.group_id, list);
   }
 
+  const [{ data: balance }, { data: withdrawals, error: withdrawalsError }] = await Promise.all([
+    supabase.from("creator_balances").select("available_amount").eq("creator_id", id).maybeSingle(),
+    supabase
+      .from("withdrawals")
+      .select("*")
+      .eq("creator_id", id)
+      .order("requested_at", { ascending: false })
+      .limit(5),
+  ]);
+
+  if (withdrawalsError) throw withdrawalsError;
+
+  const currency = (offers ?? [])[0]?.price_currency ?? "ARS";
+  const availableAmount = balance?.available_amount ?? 0;
+
   return (
     <div className="space-y-10">
       <div>
@@ -63,6 +84,57 @@ export default async function CreatorPage({
             url={`${(process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "")}/dashboard/${creator.dashboard_token}`}
           />
         </div>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-semibold">Saldo e saques</h2>
+        <p className="mt-1 text-sm text-zinc-500">
+          Saldo disponível: <strong>{currency} {availableAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
+          {" "}— transfira esse valor pra ela e registre o saque abaixo pra atualizar o saldo.
+        </p>
+
+        <form action={registerWithdrawal} className="mt-3 flex max-w-md items-end gap-2">
+          <input type="hidden" name="creator_id" value={creator.id} />
+
+          <label className="grid gap-1">
+            <span className="text-sm font-medium">Valor</span>
+            <input
+              type="number"
+              step="0.01"
+              name="amount"
+              required
+              defaultValue={availableAmount > 0 ? availableAmount.toFixed(2) : undefined}
+              className="w-32 rounded border border-zinc-300 px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="grid gap-1">
+            <span className="text-sm font-medium">Moeda</span>
+            <input
+              name="currency"
+              defaultValue={currency}
+              className="w-20 rounded border border-zinc-300 px-3 py-2 text-sm"
+            />
+          </label>
+
+          <button
+            type="submit"
+            className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-700"
+          >
+            Registrar saque
+          </button>
+        </form>
+
+        {(withdrawals ?? []).length > 0 && (
+          <ul className="mt-3 space-y-1 text-sm text-zinc-500">
+            {(withdrawals ?? []).map((w) => (
+              <li key={w.id}>
+                {new Date(w.processed_at ?? w.requested_at).toLocaleString("pt-BR")} —{" "}
+                {w.currency} {w.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section>
