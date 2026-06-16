@@ -114,6 +114,7 @@ export interface Database {
           galiopay_payment_link_id: string | null;
           galiopay_payment_id: string | null;
           galiopay_proof_token: string | null;
+          wompi_payment_link_id: string | null;
           payment_url: string | null;
           status: PaymentStatus;
           amount: number;

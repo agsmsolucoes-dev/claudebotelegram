@@ -2,15 +2,11 @@ import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendMessage } from "@/lib/telegram/client";
-import { createPaymentLink } from "@/lib/galiopay/client";
+import { createPaymentLink as galioPayCreateLink } from "@/lib/galiopay/client";
+import { createPaymentLink as wompiCreateLink } from "@/lib/wompi/client";
 import { applyCommission } from "@/lib/subscriptions";
 import type { TelegramMessage, TelegramUpdate } from "@/lib/telegram/types";
 
-/**
- * Webhook multi-tenant: cada bot (1 por criadora) aponta para
- * /api/telegram/{bots.id}, com `secret_token` = bots.webhook_secret
- * (ver lib/telegram/client.ts -> setWebhook).
- */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ botId: string }> }
@@ -37,7 +33,6 @@ export async function POST(
     await handleStart(supabase, bot, message);
   }
 
-  // Sempre 200 — Telegram reenvia o update se receber erro/timeout.
   return NextResponse.json({ ok: true });
 }
 
@@ -56,7 +51,7 @@ async function handleStart(
     await sendMessage(
       bot.bot_token,
       chatId,
-      "Olá! Use o link de assinatura enviado pela criadora para acessar o grupo VIP."
+      "¡Hola! Usá el link de suscripción enviado por la creadora para acceder al grupo VIP."
     );
     return;
   }
@@ -71,7 +66,7 @@ async function handleStart(
     .maybeSingle();
 
   if (!offer) {
-    await sendMessage(bot.bot_token, chatId, "Essa oferta não está mais disponível.");
+    await sendMessage(bot.bot_token, chatId, "Esta oferta ya no está disponible.");
     return;
   }
 
@@ -89,7 +84,6 @@ async function handleStart(
     .single();
   if (creatorError) throw creatorError;
 
-  // Garante uma assinatura (pending) para esse usuário + oferta.
   let { data: subscription } = await supabase
     .from("subscriptions")
     .select("*")
@@ -98,7 +92,7 @@ async function handleStart(
     .maybeSingle();
 
   if (!subscription) {
-    const { data: newSubscription, error } = await supabase
+    const { data: newSub, error } = await supabase
       .from("subscriptions")
       .insert({
         offer_id: offer.id,
@@ -108,9 +102,8 @@ async function handleStart(
       })
       .select()
       .single();
-
     if (error) throw error;
-    subscription = newSubscription;
+    subscription = newSub;
   }
 
   const { commissionAmount, netAmount } = applyCommission(
@@ -137,46 +130,70 @@ async function handleStart(
 
   if (paymentError) throw paymentError;
 
-  try {
-    const link = await createPaymentLink({
-      items: [
-        {
-          title: `${group.name} — ${offer.name}`,
-          quantity: 1,
-          unitPrice: offer.price_amount,
-          currencyId: offer.price_currency,
-        },
-      ],
-      referenceId,
-      description: `Assinatura ${offer.name} (${group.name})`,
-      establishmentName: creator.name,
-      sellerName: creator.name,
-      backUrl: {
-        success: `${process.env.APP_URL}/pay/success`,
-        failure: `${process.env.APP_URL}/pay/failure`,
-      },
-    });
+  const isWompi = offer.price_currency === "COP";
 
-    await supabase
-      .from("payments")
-      .update({
-        galiopay_payment_link_id: link.id,
-        galiopay_proof_token: link.proofToken,
-        payment_url: link.url,
-      })
-      .eq("id", payment.id);
+  try {
+    let paymentUrl: string;
+
+    if (isWompi) {
+      const link = await wompiCreateLink({
+        name: `${group.name} — ${offer.name}`,
+        description: `Suscripción ${offer.name} (${group.name})`,
+        single_use: true,
+        collect_shipping: false,
+        amount_in_cents: Math.round(offer.price_amount * 100),
+        currency: "COP",
+      });
+
+      await supabase
+        .from("payments")
+        .update({ wompi_payment_link_id: link.id, payment_url: link.url })
+        .eq("id", payment.id);
+
+      paymentUrl = link.url;
+    } else {
+      const link = await galioPayCreateLink({
+        items: [
+          {
+            title: `${group.name} — ${offer.name}`,
+            quantity: 1,
+            unitPrice: offer.price_amount,
+            currencyId: offer.price_currency,
+          },
+        ],
+        referenceId,
+        description: `Suscripción ${offer.name} (${group.name})`,
+        establishmentName: creator.name,
+        sellerName: creator.name,
+        backUrl: {
+          success: `${process.env.APP_URL}/pay/success`,
+          failure: `${process.env.APP_URL}/pay/failure`,
+        },
+      });
+
+      await supabase
+        .from("payments")
+        .update({
+          galiopay_payment_link_id: link.id,
+          galiopay_proof_token: link.proofToken,
+          payment_url: link.url,
+        })
+        .eq("id", payment.id);
+
+      paymentUrl = link.url;
+    }
 
     await sendMessage(
       bot.bot_token,
       chatId,
-      `Para liberar o acesso a <b>${group.name}</b> (${offer.name}), pague pelo link abaixo:\n\n${link.url}\n\nAssim que o pagamento for aprovado, você recebe o convite do grupo automaticamente.`
+      `Para acceder a <b>${group.name}</b> (${offer.name}), pagá a través del siguiente link:\n\n${paymentUrl}\n\nUna vez confirmado el pago, recibís la invitación al grupo automáticamente.`
     );
   } catch (err) {
-    console.error("Erro ao criar payment link GalioPay:", err);
+    console.error("Error al crear payment link:", err);
     await sendMessage(
       bot.bot_token,
       chatId,
-      "Não consegui gerar o link de pagamento agora. Tente novamente em instantes ou fale com o suporte."
+      "No pude generar el link de pago en este momento. Intentá de nuevo en unos minutos o contactá al soporte."
     );
   }
 }

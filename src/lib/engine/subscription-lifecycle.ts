@@ -34,7 +34,7 @@ export async function processSubscriptionLifecycle(supabase: ReturnType<typeof c
       await sendMessage(
         bot.bot_token,
         sub.telegram_user_id,
-        `Sua assinatura de <b>${group.name}</b> venceu e o acesso foi removido. Use o link de assinatura novamente para renovar.`
+        `Tu suscripción a <b>${group.name}</b> venció y se removió el acceso. Usá el link de suscripción nuevamente para renovar.`
       );
       expired++;
       continue;
@@ -44,7 +44,7 @@ export async function processSubscriptionLifecycle(supabase: ReturnType<typeof c
       await sendMessage(
         bot.bot_token,
         sub.telegram_user_id,
-        `Sua assinatura de <b>${group.name}</b> (${offer.name}) vence amanhã. Renove para não perder o acesso.`
+        `Tu suscripción a <b>${group.name}</b> (${offer.name}) vence mañana. Renovás para no perder el acceso.`
       );
       await supabase
         .from("subscriptions")
@@ -55,7 +55,7 @@ export async function processSubscriptionLifecycle(supabase: ReturnType<typeof c
       await sendMessage(
         bot.bot_token,
         sub.telegram_user_id,
-        `Sua assinatura de <b>${group.name}</b> (${offer.name}) vence em 3 dias.`
+        `Tu suscripción a <b>${group.name}</b> (${offer.name}) vence en 3 días.`
       );
       await supabase
         .from("subscriptions")
@@ -66,7 +66,7 @@ export async function processSubscriptionLifecycle(supabase: ReturnType<typeof c
       await sendMessage(
         bot.bot_token,
         sub.telegram_user_id,
-        `Sua assinatura de <b>${group.name}</b> (${offer.name}) vence em 7 dias.`
+        `Tu suscripción a <b>${group.name}</b> (${offer.name}) vence en 7 días.`
       );
       await supabase
         .from("subscriptions")

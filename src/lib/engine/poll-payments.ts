@@ -1,8 +1,6 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { getPayment, getPaymentLinkProof } from "@/lib/galiopay/client";
-import { sendMessage, createChatInviteLink } from "@/lib/telegram/client";
-import { addPeriod } from "@/lib/subscriptions";
-import { loadSubscriptionContext } from "./context";
+import { approvePayment } from "./approve-payment";
 
 /**
  * Resolve `galiopay_payment_id` a partir do `proofToken` salvo na criação do link
@@ -18,11 +16,13 @@ export async function pollPendingPayments(supabase: ReturnType<typeof createAdmi
   let approved = 0;
   let rejected = 0;
 
+  // Wompi payments are handled via webhook — skip them here
   const { data: unresolvedLinks } = await supabase
     .from("payments")
     .select("*")
     .eq("status", "pending")
     .is("galiopay_payment_id", null)
+    .is("wompi_payment_link_id", null)
     .not("galiopay_payment_link_id", "is", null);
 
   for (const payment of unresolvedLinks ?? []) {
@@ -50,6 +50,7 @@ export async function pollPendingPayments(supabase: ReturnType<typeof createAdmi
     .from("payments")
     .select("*")
     .eq("status", "pending")
+    .is("wompi_payment_link_id", null)
     .not("galiopay_payment_id", "is", null);
 
   for (const payment of pendingPayments ?? []) {
@@ -61,7 +62,7 @@ export async function pollPendingPayments(supabase: ReturnType<typeof createAdmi
       if (result.status === "approved") {
         await approvePayment(supabase, payment.id);
         approved++;
-      } else if (result.status === "rejected") {
+      } else if (result.status === "rejected" || result.status === "cancelled") {
         await supabase.from("payments").update({ status: "rejected" }).eq("id", payment.id);
         rejected++;
       }
@@ -71,48 +72,4 @@ export async function pollPendingPayments(supabase: ReturnType<typeof createAdmi
   }
 
   return { resolved, approved, rejected };
-}
-
-async function approvePayment(supabase: ReturnType<typeof createAdminClient>, paymentId: string) {
-  const { data: payment, error } = await supabase
-    .from("payments")
-    .select("*")
-    .eq("id", paymentId)
-    .single();
-  if (error) throw error;
-
-  await supabase
-    .from("payments")
-    .update({ status: "approved", approved_at: new Date().toISOString() })
-    .eq("id", payment.id);
-
-  const { subscription, offer, group, bot } = await loadSubscriptionContext(
-    supabase,
-    payment.subscription_id
-  );
-
-  const base =
-    subscription.current_period_end && new Date(subscription.current_period_end) > new Date()
-      ? new Date(subscription.current_period_end)
-      : new Date();
-  const newPeriodEnd = addPeriod(base, offer.period);
-
-  await supabase
-    .from("subscriptions")
-    .update({
-      status: "active",
-      current_period_end: newPeriodEnd.toISOString(),
-      reminder_7d_sent_at: null,
-      reminder_3d_sent_at: null,
-      reminder_1d_sent_at: null,
-    })
-    .eq("id", subscription.id);
-
-  const invite = await createChatInviteLink(bot.bot_token, group.telegram_chat_id);
-
-  await sendMessage(
-    bot.bot_token,
-    subscription.telegram_user_id,
-    `Pagamento aprovado! Aqui está seu acesso a <b>${group.name}</b>:\n\n${invite.invite_link}\n\nEsse link é de uso único.`
-  );
 }
