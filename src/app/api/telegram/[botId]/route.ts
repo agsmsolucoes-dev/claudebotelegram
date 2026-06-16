@@ -84,6 +84,7 @@ async function handleStart(
     .single();
   if (creatorError) throw creatorError;
 
+  // Garante subscription pending para esse usuário
   let { data: subscription } = await supabase
     .from("subscriptions")
     .select("*")
@@ -106,6 +107,22 @@ async function handleStart(
     subscription = newSub;
   }
 
+  // ── HOTMART ─────────────────────────────────────────────────────────────────
+  // Quando a oferta tem hotmart_checkout_url, redirecionamos pro checkout deles.
+  // O webhook /api/hotmart/webhook cria o payment record ao receber a aprovação,
+  // usando subscription.id (passado via ?src=) para identificar o assinante.
+  if (offer.hotmart_checkout_url) {
+    const sep = (offer.hotmart_checkout_url as string).includes("?") ? "&" : "?";
+    const checkoutUrl = `${offer.hotmart_checkout_url}${sep}src=${subscription.id}`;
+    await sendMessage(
+      bot.bot_token,
+      chatId,
+      `Para acceder a <b>${group.name}</b> (${offer.name}), completá el pago en el siguiente link:\n\n${checkoutUrl}\n\nUna vez confirmado el pago, recibís la invitación al grupo automáticamente.`
+    );
+    return;
+  }
+
+  // ── GALIOPAY / WOMPI ─────────────────────────────────────────────────────────
   const { commissionAmount, netAmount } = applyCommission(
     offer.price_amount,
     creator.commission_pct,
@@ -130,12 +147,10 @@ async function handleStart(
 
   if (paymentError) throw paymentError;
 
-  const isWompi = offer.price_currency === "COP";
-
   try {
     let paymentUrl: string;
 
-    if (isWompi) {
+    if (offer.price_currency === "COP") {
       const link = await wompiCreateLink({
         name: `${group.name} — ${offer.name}`,
         description: `Suscripción ${offer.name} (${group.name})`,
@@ -144,12 +159,10 @@ async function handleStart(
         amount_in_cents: Math.round(offer.price_amount * 100),
         currency: "COP",
       });
-
       await supabase
         .from("payments")
         .update({ wompi_payment_link_id: link.id, payment_url: link.url })
         .eq("id", payment.id);
-
       paymentUrl = link.url;
     } else {
       const link = await galioPayCreateLink({
@@ -170,7 +183,6 @@ async function handleStart(
           failure: `${process.env.APP_URL}/pay/failure`,
         },
       });
-
       await supabase
         .from("payments")
         .update({
@@ -179,7 +191,6 @@ async function handleStart(
           payment_url: link.url,
         })
         .eq("id", payment.id);
-
       paymentUrl = link.url;
     }
 

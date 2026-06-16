@@ -74,6 +74,7 @@ export interface Database {
           price_amount: number;
           price_currency: string;
           active: boolean;
+          hotmart_checkout_url: string | null;
           created_at: string;
         };
         Insert: Partial<Database["public"]["Tables"]["offers"]["Row"]> & {
@@ -82,6 +83,7 @@ export interface Database {
           period: OfferPeriod;
           price_amount: number;
         };
+
         Update: Partial<Database["public"]["Tables"]["offers"]["Row"]>;
         Relationships: [];
       };
@@ -115,6 +117,7 @@ export interface Database {
           galiopay_payment_id: string | null;
           galiopay_proof_token: string | null;
           wompi_payment_link_id: string | null;
+          hotmart_transaction_id: string | null;
           payment_url: string | null;
           status: PaymentStatus;
           amount: number;
